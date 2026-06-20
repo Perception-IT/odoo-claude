@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "odoo": {
+      "command": "python",
+      "args": ["/Users/davidpridmore/IdeaProjects/odoo_claude/server.py"],
+      "env": {
+        "ODOO_URL": "https://mycompany.odoo.com",
+        "ODOO_DB": "mycompany",
+        "ODOO_USERNAME": "admin@example.com",
+        "ODOO_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}
