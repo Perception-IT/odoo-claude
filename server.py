@@ -276,5 +276,66 @@ def odoo_list_models(filter_name: str = "") -> list[str]:
     return sorted(r["model"] for r in records)
 
 
+@mcp.tool()
+def odoo_signup_stats_by_site(
+    date_from: str = "",
+    date_to: str = "",
+) -> list[dict]:
+    """Return player signup counts grouped by site and month.
+
+    Uses sale_order.date_order (via x_sale_order_id) as the true signup date,
+    NOT x_registration_submission.create_date which reflects Odoo ingestion time
+    and is unreliable (records are often batch-imported after the fact).
+
+    Args:
+        date_from: ISO date string 'YYYY-MM-DD' (inclusive). Empty = no lower bound.
+        date_to:   ISO date string 'YYYY-MM-DD' (inclusive). Empty = no upper bound.
+
+    Returns:
+        List of dicts with keys: month (YYYY-MM), site, players.
+        Sorted by month then site.
+    """
+    cfg, uid = _connect()
+
+    order_domain: list = []
+    if date_from:
+        order_domain.append(["date_order", ">=", date_from])
+    if date_to:
+        order_domain.append(["date_order", "<=", date_to])
+
+    submissions = _exec(cfg, uid, "x_registration_submission", "search_read", [],
+                        fields=["x_location_name", "x_players_count", "x_sale_order_id"],
+                        limit=1000)
+
+    order_ids = [r["x_sale_order_id"][0] for r in submissions if r.get("x_sale_order_id")]
+    if not order_ids:
+        return []
+
+    domain: list = [["id", "in", order_ids]]
+    if order_domain:
+        domain += order_domain
+    orders = _exec(cfg, uid, "sale.order", "search_read", domain,
+                   fields=["date_order"], limit=1000)
+    order_date_map = {o["id"]: o["date_order"][:7] for o in orders}
+
+    from collections import defaultdict, Counter
+    by_month_site: dict = defaultdict(Counter)
+    for r in submissions:
+        if not r.get("x_sale_order_id"):
+            continue
+        order_id = r["x_sale_order_id"][0]
+        month = order_date_map.get(order_id)
+        if not month:
+            continue
+        site = r.get("x_location_name") or "Unknown"
+        by_month_site[month][site] += r.get("x_players_count") or 1
+
+    result = []
+    for month in sorted(by_month_site):
+        for site, count in sorted(by_month_site[month].items()):
+            result.append({"month": month, "site": site, "players": count})
+    return result
+
+
 if __name__ == "__main__":
     mcp.run()
